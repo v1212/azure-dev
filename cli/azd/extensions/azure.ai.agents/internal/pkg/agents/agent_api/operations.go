@@ -283,13 +283,16 @@ func (c *AgentClient) DeleteAgent(ctx context.Context, agentName, apiVersion str
 	}
 
 	var deleteResponse DeleteAgentResponse
-	if err := json.Unmarshal(body, &deleteResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &deleteResponse); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+	} else {
+		deleteResponse = DeleteAgentResponse{Deleted: true, Name: agentName}
 	}
 
 	return &deleteResponse, nil
 }
-
 // ListAgents returns a list of all agents
 func (c *AgentClient) ListAgents(ctx context.Context, params *ListAgentQueryParameters, apiVersion string) (*AgentList, error) {
 	baseURL := fmt.Sprintf("%s/agents", c.endpoint)
@@ -576,8 +579,12 @@ func (c *AgentClient) DeleteAgentVersion(ctx context.Context, agentName, agentVe
 	}
 
 	var deleteResponse DeleteAgentVersionResponse
-	if err := json.Unmarshal(body, &deleteResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &deleteResponse); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+	} else {
+		deleteResponse = DeleteAgentVersionResponse{Deleted: true, Name: agentName, Version: agentVersion}
 	}
 
 	return &deleteResponse, nil

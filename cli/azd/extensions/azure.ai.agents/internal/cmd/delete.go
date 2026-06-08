@@ -21,6 +21,7 @@ import (
 
 type deleteFlags struct {
 	name     string
+	version  string
 	force    bool
 	output   string
 	noPrompt bool
@@ -35,6 +36,8 @@ func newDeleteCommand(extCtx *azdext.ExtensionContext) *cobra.Command {
 		Short: "Delete a hosted agent.",
 		Long: `Delete a hosted agent and all of its versions.
 
+If --version is specified, only that version is deleted (the agent itself remains).
+
 If the agent has active sessions, deletion will fail unless --force is passed.
 Use --force to terminate active sessions and delete the agent.
 
@@ -44,6 +47,9 @@ The agent name is resolved from the azd environment when omitted.`,
 
   # Delete a specific agent by name
   azd ai agent delete my-agent
+
+  # Delete a specific version only
+  azd ai agent delete my-agent --version 2
 
   # Force-delete even if active sessions exist
   azd ai agent delete my-agent --force`,
@@ -65,6 +71,11 @@ The agent name is resolved from the azd environment when omitted.`,
 	cmd.Flags().BoolVar(
 		&flags.force, "force", false,
 		"Force deletion even if the agent has active sessions",
+	)
+
+	cmd.Flags().StringVar(
+		&flags.version, "version", "",
+		"Delete a specific version only (the agent itself remains)",
 	)
 
 	azdext.RegisterFlagOptions(cmd, azdext.FlagOptions{
@@ -108,7 +119,12 @@ func (a *DeleteAction) Run(ctx context.Context) error {
 
 	// Confirmation prompt (skip in --no-prompt mode)
 	if !a.flags.noPrompt {
-		message := fmt.Sprintf("Delete agent %q and all its versions?", agentName)
+		var message string
+		if a.flags.version != "" {
+			message = fmt.Sprintf("Delete version %q of agent %q?", a.flags.version, agentName)
+		} else {
+			message = fmt.Sprintf("Delete agent %q and all its versions?", agentName)
+		}
 		if a.flags.force {
 			message = fmt.Sprintf(
 				"Force-delete agent %q? This will terminate all active sessions.",
@@ -145,12 +161,35 @@ func (a *DeleteAction) Run(ctx context.Context) error {
 
 	client := agent_api.NewAgentClient(endpoint, credential)
 
+	// Branch: delete a specific version vs the entire agent
+	if a.flags.version != "" {
+		result, err := client.DeleteAgentVersion(ctx, agentName, a.flags.version, DefaultAgentAPIVersion)
+		if err != nil {
+			return classifyDeleteError(err, agentName)
+		}
+		switch a.flags.output {
+		case "json":
+			data, jsonErr := json.MarshalIndent(result, "", "  ")
+			if jsonErr != nil {
+				return fmt.Errorf("failed to marshal response: %w", jsonErr)
+			}
+			fmt.Println(string(data))
+		default:
+			fmt.Printf("Version %q of agent %q deleted.\n", a.flags.version, agentName)
+		}
+		return nil
+	}
+
 	result, err := client.DeleteAgent(ctx, agentName, DefaultAgentAPIVersion, a.flags.force)
 	if err != nil {
 		return classifyDeleteError(err, agentName)
 	}
 
-	// Best-effort: clear AGENT_{KEY}_NAME and AGENT_{KEY}_VERSION env vars
+	// Best-effort: clean up saved session and conversation IDs (same as postdown hook).
+	// Must run before cleanupEnvVars since it reads AGENT_{KEY}_ENDPOINT.
+	a.cleanupSessionState(ctx, azdClient, info.ServiceName)
+
+	// Best-effort: clear AGENT_{KEY}_NAME, AGENT_{KEY}_VERSION, AGENT_{KEY}_ENDPOINT env vars
 	a.cleanupEnvVars(ctx, azdClient, info.ServiceName)
 
 	switch a.flags.output {
@@ -196,6 +235,39 @@ func (a *DeleteAction) cleanupEnvVars(ctx context.Context, azdClient *azdext.Azd
 		}); err != nil {
 			log.Printf("delete: failed to clear env var %s: %v", key, err)
 		}
+	}
+}
+
+// cleanupSessionState removes saved session and conversation IDs from the
+// config store for the deleted agent. This mirrors the postdown hook logic
+// in listen.go to prevent stale references.
+func (a *DeleteAction) cleanupSessionState(ctx context.Context, azdClient *azdext.AzdClient, serviceName string) {
+	if serviceName == "" {
+		return
+	}
+
+	envResp, err := azdClient.Environment().GetCurrent(ctx, &azdext.EmptyRequest{})
+	if err != nil {
+		return
+	}
+	envName := envResp.Environment.Name
+
+	serviceKey := toServiceKey(serviceName)
+	endpointResp, err := azdClient.Environment().GetValue(ctx, &azdext.GetEnvRequest{
+		EnvName: envName,
+		Key:     fmt.Sprintf("AGENT_%s_ENDPOINT", serviceKey),
+	})
+	if err != nil || endpointResp.Value == "" {
+		return
+	}
+
+	agentKey := buildRemoteAgentKeyFromEndpoint(endpointResp.Value)
+
+	if err := deleteContextValue(ctx, azdClient, "sessions", agentKey); err != nil {
+		log.Printf("delete: failed to clean sessions for %s: %v", agentKey, err)
+	}
+	if err := deleteContextValue(ctx, azdClient, "conversations", agentKey); err != nil {
+		log.Printf("delete: failed to clean conversations for %s: %v", agentKey, err)
 	}
 }
 
