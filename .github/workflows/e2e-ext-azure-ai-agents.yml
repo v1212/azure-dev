@@ -79,11 +79,8 @@ jobs:
       - name: Install cli-interactive-tester
         run: |
           sudo apt-get install -y tmux
-          git clone https://x-access-token:${CLI_TESTER_TOKEN}@github.com/coreai-microsoft/cli-interactive-tester.git /tmp/cli-interactive-tester
-          cd /tmp/cli-interactive-tester
+          cd ${{ github.workspace }}/tools/cli-interactive-tester
           pip install -e .
-        env:
-          CLI_TESTER_TOKEN: ${{ secrets.CLI_TESTER_TOKEN }}
 
       - name: Install uv (for Tier 2 run-local scenario)
         if: contains(inputs.tier, '2')
@@ -130,7 +127,7 @@ jobs:
             '    "cli-interactive-tester": {' \
             '      "type": "stdio",' \
             '      "command": "bash",' \
-            '      "args": ["-c", "cd /tmp/cli-interactive-tester && python -m auto_test_tool.mcp_server"]' \
+            '      "args": ["-c", "cd ${{ github.workspace }}/tools/cli-interactive-tester && python -m auto_test_tool.mcp_server"]' \
             '    }' \
             '  }' \
             '}' > ~/.copilot/mcp-config.json

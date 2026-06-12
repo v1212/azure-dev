@@ -1,0 +1,25 @@
+[project]
+name = "auto-test-tool"
+version = "0.2.0"
+description = "MCP server for Copilot CLI-driven testing of interactive CLI flows"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+azd-test-mcp = "auto_test_tool.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["auto_test_tool*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

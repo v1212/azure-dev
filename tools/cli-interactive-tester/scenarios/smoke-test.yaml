@@ -1,0 +1,9 @@
+name: "smoke-test"
+command: "echo 'Hello from auto-test-tool' && sleep 1 && echo 'Done'"
+cwd: "/tmp"
+tags: ["smoke"]
+
+goals:
+  - "Wait for 'Hello from auto-test-tool' to appear"
+  - "Wait for 'Done' to appear"
+  - "Take a screenshot of the final state"

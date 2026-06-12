@@ -1,0 +1,14 @@
+# Scenario: Init from existing code in current directory
+# Requires an existing project with agent source code.
+name: "init-from-code"
+command: "azd ai agent init"
+cwd: "~/working/agents/auto-test-from-code"
+
+env:
+  AZD_DISABLE_AGENT_DETECT: "1"
+
+goal: |
+  Initialize from existing agent source code in the current directory.
+  When the tool detects an existing agent manifest, confirm that you want to reuse it.
+  If prompted to select an Azure subscription, pick the first one.
+  Wait for init to complete — look for "Next:" in the output.
