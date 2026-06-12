@@ -79,11 +79,11 @@ jobs:
       - name: Install cli-interactive-tester
         run: |
           sudo apt-get install -y tmux
-          # TODO: confirm repo visibility. If private, use:
-          #   git clone https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/coreai-microsoft/cli-interactive-tester.git
-          git clone https://github.com/coreai-microsoft/cli-interactive-tester.git /tmp/cli-interactive-tester
+          git clone https://x-access-token:${CLI_TESTER_TOKEN}@github.com/coreai-microsoft/cli-interactive-tester.git /tmp/cli-interactive-tester
           cd /tmp/cli-interactive-tester
           pip install -e .
+        env:
+          CLI_TESTER_TOKEN: ${{ secrets.CLI_TESTER_TOKEN }}
 
       - name: Install uv (for Tier 2 run-local scenario)
         if: contains(inputs.tier, '2')
