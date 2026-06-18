@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inject a pre-obtained access token into az CLI's MSAL cache.
+"""Inject a pre-obtained access token into az CLI for CI use.
 
 Usage (in CI):
   Set env vars AZ_ACCESS_TOKEN, AZ_TENANT_ID, AZ_SUB_ID, then run this script.
@@ -14,6 +14,7 @@ import os
 import sys
 import base64
 import time
+import stat
 from pathlib import Path
 
 
@@ -53,46 +54,11 @@ def main():
     if remaining < 600:
         print("WARNING: Token expires in less than 10 minutes!")
 
-    # az CLI client ID (well-known)
-    az_client_id = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
-    home_account_id = f"{oid}.{tenant_id}"
-    now = str(int(time.time()))
+    home = Path.home()
+    azure_dir = home / ".azure"
+    azure_dir.mkdir(parents=True, exist_ok=True)
 
-    # Construct MSAL token cache
-    cache_key = f"{home_account_id}-login.microsoftonline.com-accesstoken-{az_client_id}-{tenant_id}-https://management.azure.com//.default"
-    account_key = f"{home_account_id}-login.microsoftonline.com-{tenant_id}"
-
-    msal_cache = {
-        "AccessToken": {
-            cache_key: {
-                "credential_type": "AccessToken",
-                "secret": token,
-                "home_account_id": home_account_id,
-                "environment": "login.microsoftonline.com",
-                "realm": tenant_id,
-                "target": "https://management.azure.com//.default",
-                "client_id": az_client_id,
-                "cached_at": now,
-                "expires_on": str(exp),
-                "extended_expires_on": str(exp),
-            }
-        },
-        "Account": {
-            account_key: {
-                "home_account_id": home_account_id,
-                "environment": "login.microsoftonline.com",
-                "realm": tenant_id,
-                "local_account_id": oid,
-                "username": upn,
-                "authority_type": "MSSTS",
-            }
-        },
-        "RefreshToken": {},
-        "IdToken": {},
-        "AppMetadata": {},
-    }
-
-    # Construct azureProfile.json
+    # 1. Write azureProfile.json (for az account show)
     profile = {
         "installationId": "e2e-ci-test",
         "subscriptions": [
@@ -109,20 +75,62 @@ def main():
             }
         ],
     }
-
-    # Write files
-    azure_dir = Path.home() / ".azure"
-    azure_dir.mkdir(parents=True, exist_ok=True)
-
-    cache_path = azure_dir / "msal_token_cache.json"
-    cache_path.write_text(json.dumps(msal_cache, indent=2))
-    cache_path.chmod(0o600)
-
     profile_path = azure_dir / "azureProfile.json"
     profile_path.write_text(json.dumps(profile, indent=2))
+    print(f"Wrote {profile_path}")
 
-    print(f"Wrote {cache_path} ({cache_path.stat().st_size} bytes)")
-    print(f"Wrote {profile_path} ({profile_path.stat().st_size} bytes)")
+    # 2. Write the token to a file for the wrapper
+    token_path = azure_dir / "injected_token"
+    token_path.write_text(token)
+    token_path.chmod(0o600)
+
+    # 3. Write the expiry timestamp
+    expiry_str = time.strftime("%Y-%m-%d %H:%M:%S.000000", time.gmtime(exp))
+    (azure_dir / "injected_expiry").write_text(expiry_str)
+
+    # 4. Write az wrapper script that intercepts get-access-token calls.
+    #    The MSAL cache approach is fragile (key format must match exactly),
+    #    so we use a wrapper that returns our token for any resource request.
+    wrapper_dir = home / "az-wrapper"
+    wrapper_dir.mkdir(parents=True, exist_ok=True)
+
+    wrapper_script = f'''#!/bin/bash
+# az CLI wrapper that returns injected access token for get-access-token calls.
+# Falls through to real az for everything else.
+REAL_AZ=$(which -a az 2>/dev/null | grep -v az-wrapper | head -1)
+REAL_AZ="${{REAL_AZ:-/usr/bin/az}}"
+
+if echo "$*" | grep -q "account get-access-token"; then
+    TOKEN=$(cat {azure_dir}/injected_token)
+    EXPIRY=$(cat {azure_dir}/injected_expiry)
+    cat <<EOJSON
+{{
+  "accessToken": "$TOKEN",
+  "expiresOn": "$EXPIRY",
+  "expires_on": {exp},
+  "subscription": "{sub_id}",
+  "tenant": "{tenant_id}",
+  "tokenType": "Bearer"
+}}
+EOJSON
+else
+    exec "$REAL_AZ" "$@"
+fi
+'''
+    wrapper_path = wrapper_dir / "az"
+    wrapper_path.write_text(wrapper_script)
+    wrapper_path.chmod(0o755)
+
+    # 5. Prepend wrapper dir to GITHUB_PATH so it's in PATH for subsequent steps
+    github_path = os.environ.get("GITHUB_PATH", "")
+    if github_path:
+        with open(github_path, "a") as f:
+            f.write(f"{wrapper_dir}\n")
+        print(f"Added {wrapper_dir} to GITHUB_PATH")
+    else:
+        print(f"WARNING: GITHUB_PATH not set. Manually add to PATH: export PATH={wrapper_dir}:$PATH")
+
+    print(f"Wrote az wrapper to {wrapper_path}")
     print("az CLI token injection complete.")
 
 

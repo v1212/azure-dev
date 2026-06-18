@@ -119,6 +119,11 @@ jobs:
           python3 ${{ env.TESTS_DIR }}/ci_inject_token.py
           az account show --output table
 
+      - name: Verify token injection
+        run: |
+          which az
+          az account get-access-token --query expiresOn -o tsv
+
       - name: Configure azd to use az CLI auth
         run: azd config set auth.useAzCliAuth true
 
@@ -168,6 +173,11 @@ jobs:
         run: |
           python3 ${{ env.TESTS_DIR }}/ci_inject_token.py
           az account show --output table
+
+      - name: Verify token injection
+        run: |
+          which az
+          az account get-access-token --query expiresOn -o tsv
 
       - name: Configure azd to use az CLI auth
         run: azd config set auth.useAzCliAuth true
