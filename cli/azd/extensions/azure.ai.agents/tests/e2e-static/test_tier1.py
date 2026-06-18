@@ -259,8 +259,22 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                 sess.select_by_text("Create")
                 time.sleep(5)
         elif "tenant" in prompt and "select" in prompt:
-            # "Select a tenant" — user has multiple tenants. Select "Microsoft".
-            sess.select_by_text("Microsoft")
+            # "Select a tenant" — numbered list (not fuzzy filter).
+            # Find the number for "Microsoft" tenant from pane content.
+            tenant_num = "4"  # default
+            for l in recent_lines:
+                l_s = l.strip()
+                if "microsoft" in l_s.lower() and "customer" not in l_s.lower():
+                    # Extract number: "4. Microsoft (203 subscriptions)"
+                    parts = l_s.split(".")
+                    if parts[0].strip().isdigit():
+                        tenant_num = parts[0].strip()
+                        break
+            if verbose:
+                print(f"    [dyn-{step_num}] selecting tenant #{tenant_num}")
+            sess.send(tenant_num)
+            time.sleep(1)
+            sess.key("Enter")
             time.sleep(5)
         elif "select subscription" in prompt:
             # Accept the default/first subscription. In CI the correct one is logged in.
