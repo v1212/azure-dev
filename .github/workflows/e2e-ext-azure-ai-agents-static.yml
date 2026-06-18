@@ -115,6 +115,7 @@ jobs:
       - name: Inject access token into az CLI
         env:
           AZ_ACCESS_TOKEN: ${{ secrets.AZ_ACCESS_TOKEN }}
+          AZ_AI_TOKEN: ${{ secrets.AZ_AI_TOKEN }}
           AZ_TENANT_ID: ${{ secrets.DEVOPS_TENANT_ID }}
           AZ_SUB_ID: ${{ secrets.DEVOPS_SUB_ID }}
         run: |
@@ -170,6 +171,7 @@ jobs:
       - name: Inject access token into az CLI
         env:
           AZ_ACCESS_TOKEN: ${{ secrets.AZ_ACCESS_TOKEN }}
+          AZ_AI_TOKEN: ${{ secrets.AZ_AI_TOKEN }}
           AZ_TENANT_ID: ${{ secrets.DEVOPS_TENANT_ID }}
           AZ_SUB_ID: ${{ secrets.DEVOPS_SUB_ID }}
         run: |

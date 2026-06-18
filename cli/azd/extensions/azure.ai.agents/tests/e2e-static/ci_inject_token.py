@@ -31,6 +31,7 @@ def decode_jwt_payload(token: str) -> dict:
 
 def main():
     token = os.environ.get("AZ_ACCESS_TOKEN", "").strip()
+    ai_token = os.environ.get("AZ_AI_TOKEN", "").strip()
     tenant_id = os.environ.get("AZ_TENANT_ID", "").strip()
     sub_id = os.environ.get("AZ_SUB_ID", "").strip()
 
@@ -88,6 +89,15 @@ def main():
     expiry_str = time.strftime("%Y-%m-%d %H:%M:%S.000000", time.gmtime(exp))
     (azure_dir / "injected_expiry").write_text(expiry_str)
 
+    # 3b. Write AI token if provided (for https://ai.azure.com/ audience)
+    if ai_token:
+        ai_claims = decode_jwt_payload(ai_token)
+        ai_exp = ai_claims.get("exp", exp)
+        (azure_dir / "injected_ai_token").write_text(ai_token)
+        ai_expiry_str = time.strftime("%Y-%m-%d %H:%M:%S.000000", time.gmtime(ai_exp))
+        (azure_dir / "injected_ai_expiry").write_text(ai_expiry_str)
+        print(f"AI token expires: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(ai_exp))} UTC")
+
     # 4. Write az wrapper script that intercepts get-access-token calls.
     #    The MSAL cache approach is fragile (key format must match exactly),
     #    so we use a wrapper that returns our token for any resource request.
@@ -96,13 +106,28 @@ def main():
 
     wrapper_script = f'''#!/bin/bash
 # az CLI wrapper that returns injected access token for get-access-token calls.
+# Supports multiple resource audiences (management + AI).
 # Falls through to real az for everything else.
 REAL_AZ=$(which -a az 2>/dev/null | grep -v az-wrapper | head -1)
 REAL_AZ="${{REAL_AZ:-/usr/bin/az}}"
 
 if echo "$*" | grep -q "account get-access-token"; then
-    TOKEN=$(cat {azure_dir}/injected_token)
-    EXPIRY=$(cat {azure_dir}/injected_expiry)
+    # Check if AI resource is requested
+    if echo "$*" | grep -q "ai.azure.com"; then
+        AI_TOKEN_FILE="{azure_dir}/injected_ai_token"
+        AI_EXPIRY_FILE="{azure_dir}/injected_ai_expiry"
+        if [ -f "$AI_TOKEN_FILE" ]; then
+            TOKEN=$(cat "$AI_TOKEN_FILE")
+            EXPIRY=$(cat "$AI_EXPIRY_FILE")
+        else
+            # Fall back to management token
+            TOKEN=$(cat {azure_dir}/injected_token)
+            EXPIRY=$(cat {azure_dir}/injected_expiry)
+        fi
+    else
+        TOKEN=$(cat {azure_dir}/injected_token)
+        EXPIRY=$(cat {azure_dir}/injected_expiry)
+    fi
     cat <<EOJSON
 {{
   "accessToken": "$TOKEN",
