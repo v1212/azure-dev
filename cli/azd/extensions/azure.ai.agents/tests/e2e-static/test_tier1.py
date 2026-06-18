@@ -188,28 +188,27 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                     print(f"    [dyn-{step_num}] Shell prompt, no completion: {last}")
                 return False
 
-        # Find ? prompt — only in bottom portion of pane to avoid matching
-        # already-answered prompts that are still visible in scrollback.
+        # Find the active prompt — scan bottom of pane for the LOWEST (most recent)
+        # matching prompt, whether it starts with ? or is a non-? selector.
+        # This avoids getting stuck on an answered ? prompt while a new non-? prompt
+        # (like "Select a tenant") appears below it.
         prompt = ""
         recent_lines = lines[-15:] if len(lines) > 15 else lines
-        for l in reversed(recent_lines):
+        for l in recent_lines:
             l_stripped = l.strip()
+            l_lower = l_stripped.lower()
             if l_stripped.startswith("?"):
-                prompt = l_stripped.lower()
-                break
+                prompt = l_lower
+            elif "select a tenant" in l_lower and "?" not in l_lower:
+                prompt = l_lower
+            elif "select subscription" in l_lower and "?" not in l_lower:
+                prompt = l_lower
 
         if not prompt:
-            # Also check for non-? prompts like "Select a tenant"
-            for l in reversed(recent_lines):
-                l_lower = l.strip().lower()
-                if "select a tenant" in l_lower or "select tenant" in l_lower:
-                    prompt = l_lower
-                    break
-            if not prompt:
-                if verbose:
-                    print(f"    [dyn-{step_num}] no ? prompt, waiting...")
-                time.sleep(3)
-                continue
+            if verbose:
+                print(f"    [dyn-{step_num}] no prompt, waiting...")
+            time.sleep(3)
+            continue
 
         # Skip prompts already handled by test setup (before handle_dynamic_prompts)
         if "select a language" in prompt or "select a starter template" in prompt:
