@@ -189,8 +189,8 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                 return False
 
         # Find the active prompt — scan bottom of pane for the LOWEST (most recent)
-        # matching ? prompt. Non-? text like "Select a tenant" is just a header/title
-        # that appears before loading — the real picker is a ? prompt.
+        # matching ? prompt. Also detect non-? visual selectors like "Select a tenant"
+        # which render choices via ANSI escape codes (invisible to tmux capture).
         prompt = ""
         recent_lines = lines[-15:] if len(lines) > 15 else lines
         for l in recent_lines:
@@ -198,6 +198,8 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
             l_lower = l_stripped.lower()
             if l_stripped.startswith("?"):
                 prompt = l_lower
+            elif "select a tenant" in l_lower:
+                prompt = "select_tenant"  # special marker for visual selector
 
         if not prompt:
             if verbose:
@@ -253,12 +255,18 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
             else:
                 sess.select_by_text("Create")
                 time.sleep(10)  # Wait for loading subscriptions/tenants
-        elif "tenant" in prompt and "select" in prompt:
-            # "? Select a tenant:" — fuzzy-filter picker. Type enough to match uniquely.
-            # "Microsoft" matches both "Microsoft" and "Microsoft Customer Led".
-            # Use the tenant ID from E2E_TENANT env var or type specific filter.
-            sess.select_by_text("Microsoft (", delay=2)
-            time.sleep(5)
+        elif prompt == "select_tenant" or ("tenant" in prompt and "select" in prompt):
+            # Visual/TUI tenant selector — navigate with arrow keys.
+            # Choices: 1.HMGAdmin, 2.jianwaad2022, 3.jwaadtest1, 4.Microsoft, ...
+            # Cursor starts at 1. Press Down 3 times → Microsoft (4th).
+            if verbose:
+                print(f"    [dyn-{step_num}] selecting Microsoft tenant via Down×3+Enter")
+            for _ in range(3):
+                sess.key("Down")
+                time.sleep(0.3)
+            time.sleep(1)
+            sess.key("Enter")
+            time.sleep(8)
         elif "select subscription" in prompt:
             # Accept the default/first subscription. In CI the correct one is logged in.
             # If multiple are available and SUBSCRIPTION is set, try to filter.
