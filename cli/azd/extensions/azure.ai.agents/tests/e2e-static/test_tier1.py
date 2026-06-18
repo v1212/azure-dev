@@ -337,11 +337,14 @@ def test_init_python_basic_code(workdir):
         # After template selection, CLI flow varies (git protocol, name, foundry, etc.)
         # Let dynamic handler manage all remaining prompts.
         ok = handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code",
-                                    project_path="existing", workdir=workdir)
+                                    project_path="create", verbose=True, workdir=workdir)
 
         # Verify artifacts on disk
         has_artifacts = _validate_init_disk(workdir)
 
+        if not (ok and has_artifacts):
+            print(f"    [DUMP] {sess.name} final pane:")
+            print(sess.capture())
         return check("01-init-python-code", ok and has_artifacts,
                      "" if (ok and has_artifacts) else f"ok={ok}, artifacts={has_artifacts}")
     finally:
@@ -371,7 +374,10 @@ def test_init_python_basic_container(workdir):
 
         # After template selection, let dynamic handler manage everything
         ok = handle_dynamic_prompts(sess, max_steps=40, deploy_mode="container",
-                                    project_path="existing", workdir=workdir)
+                                    project_path="create", verbose=True, workdir=workdir)
+        if not ok:
+            print(f"    [DUMP] {sess.name} final pane:")
+            print(sess.capture())
         return check("01-init-python-container", ok, "" if ok else "init did not complete")
     finally:
         sess.kill()
@@ -401,7 +407,10 @@ def test_init_csharp_basic(workdir):
 
         # After template selection, let dynamic handler manage everything
         ok = handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code",
-                                    project_path="existing", workdir=workdir)
+                                    project_path="create", verbose=True, workdir=workdir)
+        if not ok:
+            print(f"    [DUMP] {sess.name} final pane:")
+            print(sess.capture())
         return check("01-init-csharp", ok, "" if ok else "init did not complete")
     finally:
         sess.kill()
@@ -496,9 +505,12 @@ def test_init_from_manifest_url(workdir):
         # With -m flag, may skip language/template and go directly to other prompts.
         # Use dynamic handler for everything after the command is sent.
         ok = handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code",
-                                    project_path="existing", workdir=workdir)
+                                    project_path="create", verbose=True, workdir=workdir)
 
         has_artifacts = _validate_init_disk(workdir)
+        if not (ok or has_artifacts):
+            print(f"    [DUMP] {sess.name} final pane:")
+            print(sess.capture())
         return check("01-init-manifest-url", ok or has_artifacts,
                      "" if (ok or has_artifacts) else "init did not complete")
     finally:
@@ -529,7 +541,7 @@ def test_init_with_agent_name_flag(workdir):
         # --agent-name should skip the "Enter a name" prompt.
         # Use dynamic handler for all remaining prompts.
         ok = handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code",
-                                    project_path="existing", workdir=workdir)
+                                    project_path="create", verbose=True, workdir=workdir)
 
         # Validate: agent name must appear in produced artifacts
         time.sleep(3)
@@ -548,6 +560,15 @@ def test_init_with_agent_name_flag(workdir):
             if found_name:
                 break
 
+        if not found_name:
+            print(f"    [DUMP] {sess.name} final pane:")
+            print(sess.capture())
+            # List workdir contents for debugging
+            print(f"    [DUMP] workdir contents: {os.listdir(workdir)}")
+            for d in os.listdir(workdir):
+                subdir = os.path.join(workdir, d)
+                if os.path.isdir(subdir):
+                    print(f"    [DUMP]   {d}/: {os.listdir(subdir)[:10]}")
         return check("01-init-agent-name-flag", found_name,
                      "my-custom-agent found in artifacts" if found_name else "name not in artifacts")
     finally:
