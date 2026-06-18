@@ -16,11 +16,13 @@ TMUX = os.environ.get("E2E_TMUX", shutil.which("tmux") or "/usr/bin/tmux")
 SUBSCRIPTION = os.environ.get("E2E_SUBSCRIPTION", "")
 PROJECT = os.environ.get("E2E_PROJECT", "")
 TENANT = os.environ.get("E2E_TENANT", "")
+GH_TOKEN = os.environ.get("GH_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
 # Inherit full parent PATH so tmux sessions get az-wrapper, azd, etc.
 PARENT_PATH = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
 # Set AZURE_TENANT_ID to skip multi-tenant picker in azd
 _tenant_env = f"; export AZURE_TENANT_ID={TENANT}" if TENANT else ""
-ENV_SETUP = f"export HOME={HOME_DIR}; export PATH={PARENT_PATH}{_tenant_env}"
+_gh_env = f"; export GH_TOKEN={GH_TOKEN}; export GITHUB_TOKEN={GH_TOKEN}" if GH_TOKEN else ""
+ENV_SETUP = f"export HOME={HOME_DIR}; export PATH={PARENT_PATH}{_tenant_env}{_gh_env}"
 
 RESULTS = []
 
@@ -458,7 +460,7 @@ def test_init_csharp_basic(workdir):
 
 
 def test_init_create_new_project(workdir):
-    """Init with 'Create new' Foundry project path (validates prompts, Ctrl-C before real creation)."""
+    """Init with 'Create new' Foundry project path — validates full flow completes."""
     sess = TmuxSession("t1-new-proj")
     try:
         sess.start()
@@ -478,56 +480,16 @@ def test_init_create_new_project(workdir):
         sess.select_by_text("Basic agent (Responses")
         time.sleep(3)
 
-        # Wait for Foundry project prompt (handles intermediate prompts like git protocol, name)
-        # Use dynamic handler in "create" mode but with a special twist:
-        # We just need to get to the "Create" path and verify it shows follow-up prompts.
-        # First, handle any intermediate prompts until we see "foundry project"
-        deadline = time.time() + 90
-        found_foundry = False
-        while time.time() < deadline:
-            time.sleep(3)
-            cap = sess.capture()
-            cap_lower = cap.lower()
-            if "foundry project" in cap_lower and "host" in cap_lower:
-                found_foundry = True
-                break
-            # Handle intermediate prompts
-            lines = [l for l in cap.split("\n") if l.strip()]
-            prompt = ""
-            for l in reversed(lines):
-                if l.strip().startswith("?"):
-                    prompt = l.strip().lower()
-                    break
-            if prompt:
-                if "protocol" in prompt or "git operations" in prompt:
-                    sess.key("Enter")
-                elif "enter a name" in prompt:
-                    sess.key("Enter")
-                elif "what would you like to do" in prompt:
-                    sess.select_by_text("Continue")
-                else:
-                    sess.key("Enter")
-            time.sleep(2)
-
-        if not found_foundry:
-            return check("01-init-create-project", False, "timeout at foundry")
-
-        # Select "Create a new" project
-        sess.select_by_text("Create")
-        time.sleep(5)
-
-        # Should get subscription prompt or region prompt
-        cap = sess.wait_for("select", 30)
-        if cap is None:
-            return check("01-init-create-project", False, "no follow-up prompt after Create")
-
-        # We've confirmed the Create path works (shows further prompts).
-        # Ctrl-C to exit without actually creating resources.
-        sess.key("C-c")
-        time.sleep(2)
-
-        return check("01-init-create-project", True, "create path prompts verified")
+        # Use handle_dynamic_prompts in "create" mode — handles all prompts including
+        # name, foundry project (Create), subscription, location, model, etc.
+        ok = handle_dynamic_prompts(sess, max_steps=50, deploy_mode="code",
+                                    project_path="create", verbose=True, workdir=workdir)
+        if not ok:
+            print(f"    [DUMP] {sess.name} final pane:")
+            print(sess.capture())
+        return check("01-init-create-project", ok, "" if ok else "init did not complete")
     finally:
+        sess.kill()
         sess.kill()
 
 
