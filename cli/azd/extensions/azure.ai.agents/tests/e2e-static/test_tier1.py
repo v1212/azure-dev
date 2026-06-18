@@ -189,19 +189,14 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                 return False
 
         # Find the active prompt — scan bottom of pane for the LOWEST (most recent)
-        # matching prompt, whether it starts with ? or is a non-? selector.
-        # This avoids getting stuck on an answered ? prompt while a new non-? prompt
-        # (like "Select a tenant") appears below it.
+        # matching ? prompt. Non-? text like "Select a tenant" is just a header/title
+        # that appears before loading — the real picker is a ? prompt.
         prompt = ""
         recent_lines = lines[-15:] if len(lines) > 15 else lines
         for l in recent_lines:
             l_stripped = l.strip()
             l_lower = l_stripped.lower()
             if l_stripped.startswith("?"):
-                prompt = l_lower
-            elif "select a tenant" in l_lower and "?" not in l_lower:
-                prompt = l_lower
-            elif "select subscription" in l_lower and "?" not in l_lower:
                 prompt = l_lower
 
         if not prompt:
@@ -257,24 +252,12 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                 time.sleep(3)
             else:
                 sess.select_by_text("Create")
-                time.sleep(5)
+                time.sleep(10)  # Wait for loading subscriptions/tenants
         elif "tenant" in prompt and "select" in prompt:
-            # "Select a tenant" — numbered list (not fuzzy filter).
-            # Find the number for "Microsoft" tenant from pane content.
-            tenant_num = "4"  # default
-            for l in recent_lines:
-                l_s = l.strip()
-                if "microsoft" in l_s.lower() and "customer" not in l_s.lower():
-                    # Extract number: "4. Microsoft (203 subscriptions)"
-                    parts = l_s.split(".")
-                    if parts[0].strip().isdigit():
-                        tenant_num = parts[0].strip()
-                        break
-            if verbose:
-                print(f"    [dyn-{step_num}] selecting tenant #{tenant_num}")
-            sess.send(tenant_num)
-            time.sleep(1)
-            sess.key("Enter")
+            # "? Select a tenant:" — fuzzy-filter picker. Type enough to match uniquely.
+            # "Microsoft" matches both "Microsoft" and "Microsoft Customer Led".
+            # Use the tenant ID from E2E_TENANT env var or type specific filter.
+            sess.select_by_text("Microsoft (", delay=2)
             time.sleep(5)
         elif "select subscription" in prompt:
             # Accept the default/first subscription. In CI the correct one is logged in.
