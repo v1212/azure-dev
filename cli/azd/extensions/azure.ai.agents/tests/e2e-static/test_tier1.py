@@ -270,16 +270,11 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
             sess.key("Enter")
             time.sleep(8)
         elif "select subscription" in prompt:
-            # Accept the default/first subscription. In CI the correct one is logged in.
-            # If multiple are available and SUBSCRIPTION is set, try to filter.
+            # Filter to select the correct subscription by ID prefix
             if SUBSCRIPTION:
-                # Check if there's already filter text corrupting the picker
-                cap_now = sess.capture()
-                if "no options found" in cap_now.lower():
-                    # Clear filter and accept default
-                    sess.key("Escape")
-                    time.sleep(1)
-                sess.key("Enter")
+                # Type first 8 chars of subscription ID to filter
+                sub_prefix = SUBSCRIPTION[:8]
+                sess.select_by_text(sub_prefix, delay=2)
             else:
                 sess.key("Enter")
             time.sleep(5)
@@ -340,9 +335,8 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
         elif "account name" in prompt or "resource name" in prompt:
             sess.key("Enter")  # accept default
         elif "what would you like to do" in prompt:
-            # Move off "exit setup" default and select alternative (Continue/Skip)
-            sess.key("Down")
-            time.sleep(0.5)
+            # Accept "Exit setup" (the default) to finish init.
+            # Down+Enter would select "Add another model" causing an infinite loop.
             sess.key("Enter")
             time.sleep(2)
         else:
