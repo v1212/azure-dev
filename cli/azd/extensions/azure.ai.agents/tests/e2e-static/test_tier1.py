@@ -18,7 +18,9 @@ PROJECT = os.environ.get("E2E_PROJECT", "")
 TENANT = os.environ.get("E2E_TENANT", "")
 # Inherit full parent PATH so tmux sessions get az-wrapper, azd, etc.
 PARENT_PATH = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
-ENV_SETUP = f"export HOME={HOME_DIR}; export PATH={PARENT_PATH}"
+# Set AZURE_TENANT_ID to skip multi-tenant picker in azd
+_tenant_env = f"; export AZURE_TENANT_ID={TENANT}" if TENANT else ""
+ENV_SETUP = f"export HOME={HOME_DIR}; export PATH={PARENT_PATH}{_tenant_env}"
 
 RESULTS = []
 
