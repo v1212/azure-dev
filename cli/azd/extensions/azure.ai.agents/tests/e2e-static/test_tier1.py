@@ -151,6 +151,7 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
     """Handle dynamic prompts after template selection until init completes.
     project_path: "existing" uses existing project, "create" creates new.
     workdir: if provided, uses disk validation for completion check."""
+    last_handled_prompt = ""
     for step_num in range(max_steps):
         time.sleep(3)
         cap = sess.capture()
@@ -189,13 +190,29 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                 break
 
         if not prompt:
+            # Also check for non-? prompts like "Select a tenant"
+            for l in reversed(lines):
+                l_lower = l.strip().lower()
+                if "select a tenant" in l_lower or "select tenant" in l_lower:
+                    prompt = l_lower
+                    break
+            if not prompt:
+                if verbose:
+                    print(f"    [dyn-{step_num}] no ? prompt, waiting...")
+                time.sleep(3)
+                continue
+
+        # Skip if same prompt as last handled (avoid double-fire)
+        if prompt == last_handled_prompt:
             if verbose:
-                print(f"    [dyn-{step_num}] no ? prompt, waiting...")
+                print(f"    [dyn-{step_num}] same prompt, waiting for change...")
             time.sleep(3)
             continue
 
         if verbose:
             print(f"    [dyn-{step_num}] prompt: {prompt[:80]}")
+
+        last_handled_prompt = prompt
 
         # Handle prompts
         if "[y/n]" in prompt or "(y/n)" in prompt:
@@ -223,7 +240,11 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                 time.sleep(3)
             else:
                 sess.select_by_text("Create")
-                time.sleep(3)
+                time.sleep(5)
+        elif "tenant" in prompt and "select" in prompt:
+            # "Select a tenant" — user has multiple tenants. Select "Microsoft".
+            sess.select_by_text("Microsoft")
+            time.sleep(5)
         elif "select subscription" in prompt:
             # Accept the default/first subscription. In CI the correct one is logged in.
             # If multiple are available and SUBSCRIPTION is set, try to filter.
