@@ -39,7 +39,10 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write  # For OIDC federated credentials (Tier 1/2)
+  # NOTE: This branch uses cached az CLI credentials (token-based auth)
+  # instead of OIDC. No id-token permission needed.
+  # To set up: run `az login` locally, then store ~/.azure/msal_token_cache.json
+  # as AZ_MSAL_CACHE secret and ~/.azure/azureProfile.json as AZ_PROFILE secret.
 
 env:
   TESTS_DIR: cli/azd/extensions/azure.ai.agents/tests/e2e-static
@@ -107,16 +110,16 @@ jobs:
           azd extension source add -n local -t file -l "$PWD/extensions/registry.json"
           azd extension install azure.ai.agents --source local
 
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.DEVOPS_CLIENT_ID }}
-          tenant-id: ${{ secrets.DEVOPS_TENANT_ID }}
-          subscription-id: ${{ secrets.DEVOPS_SUB_ID }}
+      - name: Inject access token into az CLI
+        env:
+          AZ_ACCESS_TOKEN: ${{ secrets.AZ_ACCESS_TOKEN }}
+          AZ_TENANT_ID: ${{ secrets.DEVOPS_TENANT_ID }}
+          AZ_SUB_ID: ${{ secrets.DEVOPS_SUB_ID }}
+        run: |
+          python3 ${{ env.TESTS_DIR }}/ci_inject_token.py
+          az account show --output table
 
       - name: Configure azd to use az CLI auth
-        # On GitHub runners, az CLI runs natively (fast). useAzCliAuth is safe here.
-        # In WSL local-dev, this causes timeouts — see LOCAL-TEST-GUIDE.md.
         run: azd config set auth.useAzCliAuth true
 
       - name: Run Tier 1 tests
@@ -157,15 +160,16 @@ jobs:
           azd extension source add -n local -t file -l "$PWD/extensions/registry.json"
           azd extension install azure.ai.agents --source local
 
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.DEVOPS_CLIENT_ID }}
-          tenant-id: ${{ secrets.DEVOPS_TENANT_ID }}
-          subscription-id: ${{ secrets.DEVOPS_SUB_ID }}
+      - name: Inject access token into az CLI
+        env:
+          AZ_ACCESS_TOKEN: ${{ secrets.AZ_ACCESS_TOKEN }}
+          AZ_TENANT_ID: ${{ secrets.DEVOPS_TENANT_ID }}
+          AZ_SUB_ID: ${{ secrets.DEVOPS_SUB_ID }}
+        run: |
+          python3 ${{ env.TESTS_DIR }}/ci_inject_token.py
+          az account show --output table
 
       - name: Configure azd to use az CLI auth
-        # On GitHub runners, az CLI runs natively (fast). useAzCliAuth is safe here.
         run: azd config set auth.useAzCliAuth true
 
       - name: Run Tier 2 tests
