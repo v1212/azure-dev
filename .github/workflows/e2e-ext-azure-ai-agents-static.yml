@@ -141,11 +141,9 @@ jobs:
   tier2:
     name: "Tier 2 — Golden Path (${{ inputs.deploy_modes || 'both' }})"
     runs-on: ubuntu-22.04
-    timeout-minutes: 30  # Each deploy mode takes ~13min; both modes run in parallel within test_tier2.py
-    if: contains(inputs.tier, '2')
-    needs: [tier0, tier1]  # Only run after both fast tiers pass
-    # Allow tier2-only runs when tier0/tier1 are skipped
-    # (GitHub Actions treats skipped jobs as success for needs)
+    timeout-minutes: 30
+    if: ${{ always() && contains(inputs.tier, '2') && !failure() }}
+    needs: [tier0, tier1]
     steps:
       - uses: actions/checkout@v4
 
