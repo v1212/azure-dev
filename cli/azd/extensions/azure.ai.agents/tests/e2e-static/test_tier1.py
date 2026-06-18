@@ -147,11 +147,17 @@ def _validate_init_disk(workdir):
     return False
 
 
+def _prompt_key(prompt):
+    """Extract the question part before ':' for de-dup comparison."""
+    colon_idx = prompt.find(":")
+    return prompt[:colon_idx].strip() if colon_idx > 0 else prompt.strip()
+
+
 def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path="existing", verbose=False, workdir=None):
     """Handle dynamic prompts after template selection until init completes.
     project_path: "existing" uses existing project, "create" creates new.
     workdir: if provided, uses disk validation for completion check."""
-    last_handled_prompt = ""
+    last_handled_key = ""
     for step_num in range(max_steps):
         time.sleep(3)
         cap = sess.capture()
@@ -212,8 +218,10 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
             time.sleep(2)
             continue
 
-        # Skip if same prompt as last handled (avoid double-fire)
-        if prompt == last_handled_prompt:
+        # Skip if same prompt question as last handled (avoid double-fire)
+        # Compare only the question part before ':', ignoring typed filter text
+        current_key = _prompt_key(prompt)
+        if current_key == last_handled_key:
             if verbose:
                 print(f"    [dyn-{step_num}] same prompt, waiting for change...")
             time.sleep(3)
@@ -222,7 +230,7 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
         if verbose:
             print(f"    [dyn-{step_num}] prompt: {prompt[:80]}")
 
-        last_handled_prompt = prompt
+        last_handled_key = current_key
 
         # Handle prompts
         if "[y/n]" in prompt or "(y/n)" in prompt:
