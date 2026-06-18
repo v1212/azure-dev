@@ -21,6 +21,8 @@ on:
           - "0"
           - "0+1"
           - "0+1+2"
+          - "1+2"
+          - "2"
         default: "0+1"
       deploy_modes:
         description: "Tier 2 deploy modes (code=source zip, container=ACR build, both=parallel)"
@@ -142,6 +144,8 @@ jobs:
     timeout-minutes: 30  # Each deploy mode takes ~13min; both modes run in parallel within test_tier2.py
     if: contains(inputs.tier, '2')
     needs: [tier0, tier1]  # Only run after both fast tiers pass
+    # Allow tier2-only runs when tier0/tier1 are skipped
+    # (GitHub Actions treats skipped jobs as success for needs)
     steps:
       - uses: actions/checkout@v4
 
