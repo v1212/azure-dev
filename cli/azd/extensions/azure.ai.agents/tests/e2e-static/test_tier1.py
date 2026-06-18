@@ -189,14 +189,6 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
         for l in reversed(recent_lines):
             l_stripped = l.strip()
             if l_stripped.startswith("?"):
-                # Skip answered prompts (they have ": <answer>" with non-empty answer)
-                colon_idx = l_stripped.find(":")
-                if colon_idx > 0:
-                    after_colon = l_stripped[colon_idx + 1:].strip()
-                    # If there's substantial text after ':', it's likely an answered prompt
-                    # Active prompts have empty or very short text after ':'
-                    if len(after_colon) > 20:
-                        continue
                 prompt = l_stripped.lower()
                 break
 
@@ -212,6 +204,13 @@ def handle_dynamic_prompts(sess, max_steps=40, deploy_mode="code", project_path=
                     print(f"    [dyn-{step_num}] no ? prompt, waiting...")
                 time.sleep(3)
                 continue
+
+        # Skip prompts already handled by test setup (before handle_dynamic_prompts)
+        if "select a language" in prompt or "select a starter template" in prompt:
+            if verbose:
+                print(f"    [dyn-{step_num}] skipping pre-handled: {prompt[:50]}")
+            time.sleep(2)
+            continue
 
         # Skip if same prompt as last handled (avoid double-fire)
         if prompt == last_handled_prompt:

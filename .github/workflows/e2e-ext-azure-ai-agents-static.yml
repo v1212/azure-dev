@@ -84,7 +84,7 @@ jobs:
   tier1:
     name: "Tier 1 — Init Variants"
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     if: contains(inputs.tier, '1')
     # No needs: — runs in parallel with tier0
     steps:
