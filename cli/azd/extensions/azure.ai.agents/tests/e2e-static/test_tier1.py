@@ -16,7 +16,9 @@ TMUX = os.environ.get("E2E_TMUX", shutil.which("tmux") or "/usr/bin/tmux")
 SUBSCRIPTION = os.environ.get("E2E_SUBSCRIPTION", "")
 PROJECT = os.environ.get("E2E_PROJECT", "")
 TENANT = os.environ.get("E2E_TENANT", "")
-ENV_SETUP = f"export HOME={HOME_DIR}; export PATH={HOME_DIR}/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+# Inherit full parent PATH so tmux sessions get az-wrapper, azd, etc.
+PARENT_PATH = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+ENV_SETUP = f"export HOME={HOME_DIR}; export PATH={PARENT_PATH}"
 
 RESULTS = []
 
