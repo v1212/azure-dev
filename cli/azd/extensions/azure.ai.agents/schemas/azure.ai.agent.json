@@ -48,8 +48,11 @@
     },
     "modelType": {
       "type": "string",
-      "description": "Voice agent (kind: prompt-voice) model-inference mode. 'managed' uses a Voice Live-hosted model; 'self_deployed' (BYOM) references an existing Foundry model deployment.",
-      "enum": ["managed", "self_deployed"]
+      "description": "Voice agent model-inference mode. 'managed' uses a Voice Live-hosted model; 'self_deployed' references a Foundry model deployment; 'hosted_agent' routes turns to a deployed hosted agent service.",
+      "enum": ["managed", "self_deployed", "hosted_agent"]
+    },
+    "targetAgent": {
+      "$ref": "#/definitions/VoiceTargetAgent"
     },
     "model": {
       "type": "object",
@@ -177,19 +180,53 @@
   "additionalProperties": true,
   "allOf": [
     {
-      "$comment": "A prompt-voice agent must declare a speech-to-speech model; the deploy path rejects a voice service whose model.id is missing. Keep editor/schema validation aligned with that runtime requirement.",
+      "$comment": "A hosted-agent voice wrapper references a deployed hosted service; other voice modes declare a model.",
       "if": {
         "properties": {
-          "kind": { "const": "prompt-voice" }
+          "kind": { "const": "prompt-voice" },
+          "modelType": { "const": "hosted_agent" }
         },
-        "required": ["kind"]
+        "required": ["kind", "modelType"]
       },
       "then": {
-        "required": ["model"]
+        "required": ["targetAgent"],
+        "not": {
+          "anyOf": [
+            { "required": ["model"] },
+            { "required": ["instructions"] },
+            { "required": ["structuredInputs"] },
+            { "required": ["tools"] },
+            { "required": ["toolChoice"] },
+            { "required": ["parallelToolCalls"] },
+            { "required": ["maxOutputTokens"] },
+            { "required": ["include"] },
+            { "required": ["handoff"] }
+          ]
+        }
+      },
+      "else": {
+        "if": {
+          "properties": { "kind": { "const": "prompt-voice" } },
+          "required": ["kind"]
+        },
+        "then": {
+          "required": ["model"],
+          "not": { "required": ["targetAgent"] }
+        }
       }
     }
   ],
   "definitions": {
+    "VoiceTargetAgent": {
+      "type": "object",
+      "description": "Hosted agent service used as the conversation target for a voice wrapper.",
+      "properties": {
+        "service": { "type": "string", "minLength": 1, "pattern": "\\S", "description": "azure.yaml service name of the target hosted agent." },
+        "version": { "type": "string", "enum": ["deployed"], "default": "deployed", "description": "Pin the wrapper to the target version deployed by this azd environment." }
+      },
+      "required": ["service"],
+      "additionalProperties": false
+    },
     "ProtocolVersionRecord": {
       "type": "object",
       "description": "A protocol the agent implements, with its version.",

@@ -548,6 +548,7 @@ func serviceConfigFromDoc(t *testing.T, e docExample, name string, svc map[strin
 		RelativePath:         core.RelativePath,
 		Image:                core.Image,
 		AdditionalProperties: props,
+		Uses:                 core.Uses,
 	}
 
 	// The deprecated shape nests the agent definition under `config`.
