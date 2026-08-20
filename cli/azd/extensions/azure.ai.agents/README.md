@@ -218,6 +218,9 @@ The target must be active, declare `invocations_ws/1.0.0`, and include
 instructions, tools, and other conversation controls belong to the target;
 the wrapper owns audio, voice, store, avatar, and greeting configuration.
 
+For end-to-end validation, lifecycle checks, local dashboard steps, and the
+experience alignment matrix, see [Hosted Voice Agent Test Guide](docs/hosted-voice-test-guide.md).
+
 ## Prompt voice advanced configuration
 
 Advanced prompt voice settings are authored on the `azure.ai.agent` service in
