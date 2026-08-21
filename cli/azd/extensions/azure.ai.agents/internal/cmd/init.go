@@ -371,6 +371,16 @@ func resolveAgentNameFromManifestPointer(
 		flags.agentName = validated
 		return validated, nil
 	}
+	if descriptor, compatible, err := loadHostedVoiceSourceDescriptor(manifestPointer); err != nil {
+		return "", fmt.Errorf("reading hosted voice sample descriptor: %w", err)
+	} else if compatible {
+		validated, err := validateInitAgentName(descriptor.Name)
+		if err != nil {
+			return "", err
+		}
+		flags.agentName = validated
+		return validated, nil
+	}
 
 	peeked := peekManifestName(ctx, manifestPointer, httpClient)
 	if peeked == "" {
@@ -1071,6 +1081,38 @@ func runInitFromManifest(
 	createdFolderDisplay string,
 	userProvidedManifest bool,
 ) error {
+	if descriptor, compatible, err := loadHostedVoiceSourceDescriptor(flags.manifestPointer); err != nil {
+		return fmt.Errorf("reading hosted voice sample descriptor: %w", err)
+	} else if compatible {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting current directory for hosted voice sample: %w", err)
+		}
+		if !isSamePath(filepath.Dir(flags.manifestPointer), cwd) {
+			return exterrors.Validation(
+				exterrors.CodeInvalidParameter,
+				"hosted voice sample descriptor must be initialized from its source directory",
+				fmt.Sprintf("change directory to %q and run 'azd ai agent init -m %s'", filepath.Dir(flags.manifestPointer), filepath.Base(flags.manifestPointer)),
+			)
+		}
+		if !promptVoicePreviewEnabled() {
+			return exterrors.Validation(
+				exterrors.CodeInvalidParameter,
+				"hosted voice agent init is private preview",
+				fmt.Sprintf("set %s=true to enable hosted voice init", promptVoicePreviewEnvVar),
+			)
+		}
+		if err := applyHostedVoiceSourceDescriptor(flags, flags.manifestPointer, descriptor); err != nil {
+			return err
+		}
+		action := &InitFromCodeAction{
+			azdClient:  azdClient,
+			flags:      flags,
+			httpClient: httpClient,
+		}
+		return action.Run(ctx)
+	}
+
 	// Ensure project and environment exist (no subscription/location prompting yet)
 	projectConfig, err := ensureProject(ctx, flags, azdClient, targetDir)
 	if err != nil {
