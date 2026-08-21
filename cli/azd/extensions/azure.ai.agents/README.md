@@ -168,8 +168,13 @@ Details:
 
 A hosted voice wrapper keeps Voice Live responsible for VAD, speech-to-text,
 and text-to-speech while routing conversation logic to a hosted agent in the
-same Foundry project. Declare both services and reference the target by its
-`azure.yaml` service name:
+same Foundry project. Run interactive init from compatible Voice Bridge source
+code by setting `AZD_AI_AGENT_ENABLE_PROMPT_VOICE=true` and selecting **Create a
+hosted voice agent from the code in the current directory**. For CI, use
+`azd ai agent init --kind hosted-voice ... --no-prompt`.
+
+Init generates both services and references the target by its `azure.yaml`
+service name:
 
 ```yaml
 services:

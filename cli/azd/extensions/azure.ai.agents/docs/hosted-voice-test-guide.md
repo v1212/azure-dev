@@ -42,6 +42,17 @@ same Foundry project.
 
 ## Manifest
 
+Generate the composition interactively from compatible source code:
+
+```powershell
+$env:AZD_AI_AGENT_ENABLE_PROMPT_VOICE = "true"
+azd ai agent init
+```
+
+Select **Create a hosted voice agent from the code in the current directory**.
+For CI, use `--kind hosted-voice` with the normal code deploy flags and
+`--no-prompt`.
+
 Use one project service, one hosted target, and one Voice wrapper. The wrapper
 references the target by its `azure.yaml` service name, not by a remote agent
 name copied into the file.
@@ -306,7 +317,7 @@ the environment was restored.
 | Generic `invoke` | Responses/invocations | Not for WS | Not for Voice/WS; use Voice client/UI |
 | Delete agent | Yes | Yes | Yes for each layer; wrapper first |
 | `azd down` ownership cleanup | Existing behavior | Existing behavior | Follow-up for wrapper reverse cleanup |
-| `azd ai agent init` scaffold | Yes | Yes | Follow-up; explicit manifest in this PR |
+| `azd ai agent init` scaffold | Yes | Yes | Yes, interactive and no-prompt CI paths |
 
 ## Evidence to record
 

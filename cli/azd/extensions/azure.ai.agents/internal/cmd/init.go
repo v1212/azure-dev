@@ -787,6 +787,7 @@ func synthesizeImageManifestFile(agentName, image string, flagProtocols []string
 
 // kindFlagPromptVoice is the accepted --kind value for a declarative voice agent.
 const kindFlagPromptVoice = "prompt-voice"
+const kindFlagHostedVoice = "hosted-voice"
 
 // synthesizeVoiceManifestFile writes a temporary declarative (managed) voice
 // agent manifest (kind: prompt-voice) to a temp dir and returns its path plus a
@@ -1163,6 +1164,8 @@ func agentDefiningFlagsSet(flags *initFlags, srcBlocksReuse bool) bool {
 		flags.modelDeployment != "" ||
 		flags.projectResourceId != "" ||
 		flags.image != "" ||
+		flags.kind != "" ||
+		flags.voice != "" ||
 		srcBlocksReuse ||
 		len(flags.protocols) > 0
 }
@@ -1322,11 +1325,12 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 			// when the other runs first (e.g. --kind prompt-voice --image would
 			// otherwise silently create a hosted image agent).
 			if flags.kind != "" {
-				if !strings.EqualFold(flags.kind, kindFlagPromptVoice) {
+				if !strings.EqualFold(flags.kind, kindFlagPromptVoice) &&
+					!strings.EqualFold(flags.kind, kindFlagHostedVoice) {
 					return exterrors.Validation(
 						exterrors.CodeInvalidParameter,
 						fmt.Sprintf("unsupported --kind value %q", flags.kind),
-						fmt.Sprintf("the only supported --kind value is %q", kindFlagPromptVoice),
+						fmt.Sprintf("supported --kind values are %q and %q", kindFlagPromptVoice, kindFlagHostedVoice),
 					)
 				}
 				if !promptVoicePreviewEnabled() {
@@ -1336,14 +1340,28 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 						fmt.Sprintf("set %s=true to enable prompt voice init", promptVoicePreviewEnvVar),
 					)
 				}
-				if flags.image != "" {
+				if strings.EqualFold(flags.kind, kindFlagHostedVoice) && flags.image != "" {
+					return exterrors.Validation(
+						exterrors.CodeInvalidParameter,
+						"--kind hosted-voice cannot be combined with --image",
+						"hosted voice init requires local Voice Bridge source code; drop --image",
+					)
+				}
+				if strings.EqualFold(flags.kind, kindFlagHostedVoice) && flags.manifestPointer != "" {
+					return exterrors.Validation(
+						exterrors.CodeInvalidParameter,
+						"--kind hosted-voice cannot be combined with --manifest",
+						"hosted voice init generates the target and wrapper from local code; drop --manifest",
+					)
+				}
+				if strings.EqualFold(flags.kind, kindFlagPromptVoice) && flags.image != "" {
 					return exterrors.Validation(
 						exterrors.CodeInvalidParameter,
 						"--kind prompt-voice cannot be combined with --image",
 						"a voice agent is managed and has no container image; drop --image",
 					)
 				}
-				if flags.manifestPointer != "" {
+				if strings.EqualFold(flags.kind, kindFlagPromptVoice) && flags.manifestPointer != "" {
 					return exterrors.Validation(
 						exterrors.CodeInvalidParameter,
 						"--kind prompt-voice cannot be combined with --manifest",
@@ -1389,7 +1407,7 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 			// language prompts and code scaffolding). Mirrors the --image fast path.
 			// --kind value and --image incompatibility are validated above, before
 			// either synthesis branch.
-			if flags.kind != "" && flags.manifestPointer == "" {
+			if strings.EqualFold(flags.kind, kindFlagPromptVoice) && flags.manifestPointer == "" {
 				if flags.agentName == "" {
 					return exterrors.Validation(
 						exterrors.CodeInvalidParameter,
@@ -1525,7 +1543,7 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 				if findErr != nil {
 					return findErr
 				}
-				if existing != "" {
+				if existing != "" && !isHostedVoiceSourceDescriptor(existing) {
 					useExisting := flags.noPrompt
 					if !flags.noPrompt {
 						confirmResp, promptErr := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
@@ -1679,7 +1697,13 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 				}
 			} else {
 				// No manifest provided - prompt user for init mode
-				initMode, err := promptInitMode(ctx, azdClient, flags.noPrompt)
+				initMode := ""
+				var err error
+				if strings.EqualFold(flags.kind, kindFlagHostedVoice) {
+					initMode = initModeHostedVoice
+				} else {
+					initMode, err = promptInitMode(ctx, azdClient, flags.noPrompt)
+				}
 				if err != nil {
 					if exterrors.IsCancellation(err) {
 						return exterrors.Cancelled("initialization was cancelled")
@@ -1846,6 +1870,20 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 						return err
 					}
 
+				case initModeHostedVoice:
+					flags.kind = kindFlagHostedVoice
+					action := &InitFromCodeAction{
+						azdClient:  azdClient,
+						flags:      flags,
+						httpClient: httpClient,
+					}
+					if err := action.Run(ctx); err != nil {
+						if exterrors.IsCancellation(err) {
+							return exterrors.Cancelled("initialization was cancelled")
+						}
+						return err
+					}
+
 				default:
 					// initModeFromCode - use existing code in current directory
 					action := &InitFromCodeAction{
@@ -1916,9 +1954,8 @@ from code-deploy ZIP packaging (uses .gitignore syntax).`,
 			"Incompatible with --deploy-mode code.")
 
 	cmd.Flags().StringVar(&flags.kind, "kind", "",
-		"Agent kind to initialize non-interactively. Currently supports 'prompt-voice' to create a "+
-			"declarative (managed) voice agent, skipping template/language selection and code scaffolding. "+
-			"Use --model to name the speech-to-speech model and --voice to set the output voice.")
+		"Agent kind to initialize. Supports 'prompt-voice' and 'hosted-voice'. "+
+			"Hosted voice uses local code for a Voice Bridge target and creates a Voice wrapper.")
 
 	cmd.Flags().StringVar(&flags.voice, "voice", "",
 		"Output voice name for private prompt-voice automation. Hidden until public preview.")
