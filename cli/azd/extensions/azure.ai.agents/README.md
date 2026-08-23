@@ -13,6 +13,56 @@ Use `--no-inspector` to run only the local agent process:
 azd ai agent run --no-inspector
 ```
 
+## Publishing a Digital Worker
+
+An Activity-protocol hosted agent can be published as a Microsoft 365 Digital
+Worker. Declare the Digital Worker settings on the `azure.ai.agent` service in
+`azure.yaml`, deploy the agent, and then publish it:
+
+```yaml
+services:
+  my-digital-worker:
+    host: azure.ai.agent
+    project: src/my-digital-worker
+    language: python
+    kind: hosted
+    name: my-digital-worker
+    protocols:
+      - protocol: activity
+        version: 2.0.0
+    activity:
+      useCase: digital_worker
+      publish:
+        publishScope: tenant
+        agentDisplayName: My Digital Worker
+        agenticUserTemplate:
+          id: digitalWorkerTemplate
+          file: agenticUserTemplateManifest.json
+          schemaVersion: 0.1.0-preview
+          communicationProtocol: activityProtocol
+```
+
+The `activity.publish` block is shared Microsoft 365 app publish metadata for
+Activity use cases (including `simple`). For `digital_worker`, azd enforces
+additional constraints: `publish` must be present, `publishScope` must be
+`tenant`, and `agenticUserTemplate` must include `id`, `file`,
+`schemaVersion`, and `communicationProtocol`. The publish request sets
+`publishAsAutopilot` automatically to `true` for this use case; users do not
+need to declare it in YAML. The Agent Identity Blueprint ID is generated during
+deployment and added to the publish request automatically.
+
+```bash
+azd deploy
+azd ai agent publish
+```
+
+For `simple` Activity agents, `publishScope` accepts `shared` or `tenant`. For
+`digital_worker`, `publishScope` is always `tenant`.
+An explicit `azd ai agent publish --scope <scope>` overrides the configured
+value where allowed by the use case. Use `--display-name` and `--app-version`
+to override the corresponding configured publish metadata for one command
+invocation.
+
 The Agent Inspector UI binds port `8087` by default. Use `--inspector-port` to
 move it, which is what you need when running two agents side by side or when a
 stale process still holds the default port:
@@ -133,36 +183,71 @@ Details:
 > the other inline agent properties such as `codeConfiguration` and
 > `environmentVariables`.
 
-## Prompt voice agent API mode
+### Moderating invocations-protocol traffic
 
-Prompt voice agents (`kind: prompt-voice`) use the legacy `/voice_agents` API by
-default while the unified `/agents` voice API rolls out across regions. To run
-regression tests against the unified API, set `AZURE_VOICE_AGENT_API` before
-`azd deploy`:
+For agents that expose the `invocations` protocol, the RAI policy alone is not
+enough: the content-safety proxy needs to be told **where the text lives** in the
+request and response bodies. Without that it has nothing to submit to the policy,
+so no content is actually screened. Supply an `invocationsModeration` block on the
+`rai_policy` entry:
 
-```bash
-# Default: legacy /voice_agents API
-azd env set AZURE_VOICE_AGENT_API legacy
-
-# Unified /agents API using the current object-shaped audio.output.voice payload
-azd env set AZURE_VOICE_AGENT_API unified
-
-# Unified /agents API using the TiP/spec flat audio.output.voice payload
-azd env set AZURE_VOICE_AGENT_API unified-flat
+```yaml
+services:
+  my-agent:
+    host: azure.ai.agent
+    project: .
+    kind: hosted
+    name: my-agent
+    protocols:
+      - protocol: invocations
+        version: "1.0.0"
+    policies:
+      - type: rai_policy
+        raiPolicyName: /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.CognitiveServices/accounts/<account-name>/raiPolicies/<policy-name>
+        invocationsModeration:
+          responseMode: both
+          inputContentType: json
+          outputContentType: json
+          inputPaths:
+            - $.input
+          outputPaths:
+            - $.output
+          streamSelectors:
+            - eventType: response.output_text.delta
+              textField: $.delta
 ```
 
-Details:
+Fields:
 
-- `legacy` remains the default and preserves existing behavior.
-- `unified` and `unified-flat` check `/agents/{name}` remotely before deploying:
-  `404` creates through `/agents`, while `200` updates through `/agents/{name}`.
-- Unified modes write `AGENT_<SERVICE>_VERSION` and store the callable voice
-  WebSocket endpoint as `wss://.../agents/{name}/endpoint/protocols/voice?api-version=v1`.
-- `legacy` clears any stale `AGENT_<SERVICE>_VERSION` value and preserves the
-  existing `/voice_agents/{name}` endpoint marker.
-- `unified-flat` is intended for TiP/new-service validation. Non-TiP regions may
-  still require `legacy` or `unified` until the flat output shape is fully
-  rolled out.
+| Field | Required | Description |
+| --- | --- | --- |
+| `responseMode` | yes | `non_streaming`, `streaming`, or `both`. |
+| `inputContentType` | no | `json` (default) or `text`. |
+| `outputContentType` | no | `json` (default) or `text`. |
+| `inputPaths` | when `inputContentType` is `json` or omitted (it defaults to `json`) | JSONPath expressions selecting the request text. |
+| `outputPaths` | when `responseMode` includes non-streaming and `outputContentType` is `json` or omitted (it defaults to `json`) | JSONPath expressions selecting the buffered response text. |
+| `streamSelectors` | when `responseMode` includes streaming and `outputContentType` is `json` or omitted (it defaults to `json`) | `eventType` (required) and `textField` per server-sent event frame. |
+
+`invocationsModeration` is only valid on a `hosted` agent whose `protocols` list
+includes `invocations`. Declaring it elsewhere — on another agent kind, or on an
+`invocations_ws`-only agent, which does not go through the content-safety HTTP
+proxy — fails validation rather than silently deploying a policy that never runs.
+
+> **Understanding `responseMode`:** it declares which response *shapes* the
+> container can produce, **not** "input and output". Input is always moderated.
+> For the output side the proxy inspects the actual response `Content-Type` and
+> runs exactly one gate: the SSE gate for `text/event-stream`, the buffered gate
+> otherwise. Use `both` only for containers that genuinely answer both ways —
+> if a response arrives in a shape `responseMode` did not declare, the request
+> fails closed rather than skipping moderation.
+
+Set `inputContentType`/`outputContentType` to `text` when the body is plain text;
+the whole body is then moderated and no paths are needed for that direction.
+
+As with `raiPolicyName`, the deprecated on-disk `agent.yaml` shape uses snake_case
+keys throughout this block (`invocations_moderation`, `response_mode`,
+`input_paths`, `stream_selectors`, `event_type`, and so on). The **values**
+(`non_streaming`, `streaming`, `both`, `json`, `text`) are the same in both.
 
 ### Hosted voice wrapper (preview)
 
@@ -271,7 +356,7 @@ services:
           languages: [en-US]
           autoTruncate: true
         transcription:
-          model: whisper-1
+          model: azure-speech
           language: en-US
       output:
         format:

@@ -179,6 +179,7 @@ func voiceAgentDefinitionToInline(va agent_yaml.VoiceAgent) AgentDefinitionInlin
 		ParallelToolCalls: va.ParallelToolCalls,
 		MaxOutputTokens:   va.MaxOutputTokens,
 		Include:           va.Include,
+		Policies:          va.Policies,
 	}
 }
 
@@ -203,6 +204,7 @@ func (d AgentDefinitionInline) toVoiceAgent() agent_yaml.VoiceAgent {
 		ParallelToolCalls: d.ParallelToolCalls,
 		MaxOutputTokens:   d.MaxOutputTokens,
 		Include:           d.Include,
+		Policies:          d.Policies,
 	}
 }
 
